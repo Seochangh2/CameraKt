@@ -1,41 +1,116 @@
 package com.example.camera
-import android.app.Activity
-import android.content.Intent;
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
-import android.location.GnssAntennaInfo
-import android.net.Uri
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
-import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
-import androidx.core.content.FileProvider
-import java.security.Permission
-import com.gun0912.tedpermission.PermissionListener;
-import com.gun0912.tedpermission.TedPermission;
 import kotlinx.android.synthetic.main.activity_main.*
-import java.io.File
-import java.io.FileOutputStream
-import java.text.SimpleDateFormat
+import org.tensorflow.lite.DataType
 import java.util.*
+import java.io.IOException;
+import org.tensorflow.lite.support.image.TensorImage
+import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
+import org.tensorflow.lite.support.model.Model
+import android.content.ContentUris
+import android.database.Cursor
+import android.net.Uri
+import android.os.Environment
+import androidx.core.content.FileProvider
+import java.io.File
+
 
 class MainActivity : AppCompatActivity() {
     val REQUEST_IMAGE_CAPTURE = 1  //카메라 사진 촬영 요청 코드 *임의로 값 입력
     lateinit var currentPhotoPath : String //문자열 형태의 사진 경로값 (초기값을 null로 시작하고 싶을 때 - lateinti var)
     val REQUEST_IMAGE_PICK = 10
+    private var modelInputChannel = 0
+    private var modelInputWidth = 0
+    private var modelInputHeight = 0
+    private lateinit var inputImage: TensorImage
+    private lateinit var outputBuffer: TensorBuffer
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        setPermission()
+        //setPermission()
 
-        btn_cam.setOnClickListener{
-            takeCapture() // 카메라 앱을 실행하여 사진 촬영
+        btn_cam.setOnClickListener {
+            //takeCapture() // 카메라 앱을 실행하여 사진 촬영
+
         }
-    }
 
+        val model = Model.createModel(
+            this,
+            "D:\\git\\CameraKt\\Camera\\app\\src\\main\\ml\\bodypixtf.tflite"
+        );
+
+        val inputTensor = model.getInputTensor(0)
+        val inputShape = inputTensor.shape()
+        modelInputChannel = inputShape[0]
+        modelInputWidth = inputShape[1]
+        modelInputHeight = inputShape[2]
+        val context = this
+        inputImage = TensorImage(inputTensor.dataType())
+        val outputTensor = model.getOutputTensor(0)
+        outputBuffer = TensorBuffer.createFixedSize(outputTensor.shape(), outputTensor.dataType())
+        var imageName = "ex.jpg"
+        val selectedImagelink = File("${Environment.getExternalStorageDirectory().absoluteFile}/path/", "$imageName")
+        val selectedImage : Uri = FileProvider.getUriForFile(
+            this,
+            "com.example.camera.fileprovider",
+            selectedImagelink,
+        )
+        var bitmap: Bitmap? = null
+        try {
+            bitmap = if (Build.VERSION.SDK_INT >= 28) {
+                val src = ImageDecoder.createSource(contentResolver, selectedImage)
+                ImageDecoder.decodeBitmap(src)
+            } else {
+                MediaStore.Images.Media.getBitmap(contentResolver, selectedImage)
+            }
+        } catch (exception: IOException) {
+            Toast.makeText(this, "Can not load image!!", Toast.LENGTH_SHORT).show()
+        }
+
+        bitmap?.let {
+            val output = classifier.classify(bitmap)
+            val resultStr =
+                String.format(
+                    Locale.ENGLISH,
+                    "class : %s, prob : %.2f%%",
+                    output.first,
+                    output.second * 100
+                )
+            binding.run {
+                imageGallery.setImageBitmap(bitmap)
+                textResult.text = resultStr
+            }
+        }
+
+
+// Creates inputs for reference.
+        val inputFeature0 = TensorBuffer.createFixedSize(intArrayOf(1, 1, 1, 3), DataType.FLOAT32)
+        inputFeature0.loadBuffer(byteBuffer)
+
+// Runs model inference and gets result.
+        val outputs = model.process(inputFeature0)
+        val outputFeature0 = outputs.outputFeature0AsTensorBuffer
+        val outputFeature1 = outputs.outputFeature1AsTensorBuffer
+        val outputFeature2 = outputs.outputFeature2AsTensorBuffer
+        val outputFeature3 = outputs.outputFeature3AsTensorBuffer
+        val outputFeature4 = outputs.outputFeature4AsTensorBuffer
+        val outputFeature5 = outputs.outputFeature5AsTensorBuffer
+        val outputFeature6 = outputs.outputFeature6AsTensorBuffer
+        val outputFeature7 = outputs.outputFeature7AsTensorBuffer
+
+// Releases model resources if no longer used.
+        model.close()
+
+    }
+    /*
     private fun takeCapture() {
         Intent(MediaStore.ACTION_IMAGE_CAPTURE).also { takePictureIntent ->
             takePictureIntent.resolveActivity(packageManager)?.also {
@@ -121,5 +196,5 @@ class MainActivity : AppCompatActivity() {
         val out = FileOutputStream(folderPath + fileName)
         bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
         Toast.makeText(this,"사진이 앨범에 저장되었습니다.",Toast.LENGTH_SHORT).show()
-    }
+    }*/
 }
